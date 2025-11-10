@@ -1,17 +1,3 @@
-# Python cache files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Jupyter notebooks checkpoints
-.ipynb_checkpoints/
-
-# Virtual environment folders
-.env/
-.venv/
-*.env
-
 # MyST/Sphinx build output
 _build/
 html/
@@ -22,12 +8,4 @@ doctrees/
 figures/
 audio/
 
-# Logs and miscellaneous
-*.log
-*.out
-*.aux
-*.toc
-
-# OS/system files
-.DS_Store
-Thumbs.db
+ligotools.egg-info/
