@@ -421,3 +421,7 @@ Notebook is cleaner.
 Plotting is reusable for multiple events or detectors.
 
 Easier to test plotting logic separately.
+
+Input: add two separate small tests that test the output of functions in utils.py. Add those tests into the tests directory you created earlier, into a separate python script called test_utils.py. These should the functions you moved from the notebook (whiten, write_wavfile, reqshift).
+
+Output: 
