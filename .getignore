@@ -9,3 +9,5 @@ figures/
 audio/
 
 ligotools.egg-info/
+
+.ipynb_checkpoints/
