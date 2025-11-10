@@ -1,0 +1,423 @@
+Input: I asked ChatGPT what tests to run based on the readligo.py contents and it gave me test functions:
+Output: 1. Test file handling logic
+
+✅ Why: A lot of the functions depend on correctly recognizing filenames and directories.
+What to test:
+
+That loaddata() correctly distinguishes between .gwf and .hdf5 files.
+
+That it returns None, None, None for zero-length files.
+
+That FileList properly finds .gwf or .hdf5 files in a temporary directory.
+
+Example (pytest-style):
+import os
+import numpy as np
+import pytest
+from ligotools import readligo
+
+def test_loaddata_zero_length(tmp_path):
+    f = tmp_path / "empty.hdf5"
+    f.touch()  # create empty file
+    result = readligo.loaddata(str(f))
+    assert result == (None, None, None)
+2. Test internal helper behavior
+
+✅ Why: These are easy to isolate and check without real LIGO data.
+What to test:
+
+dq_channel_to_seglist() correctly produces slices for a fake binary mask.
+
+dq2segs() returns proper segment start/stop pairs.
+
+Example:
+
+def test_dq_channel_to_seglist_basic():
+    channel = np.array([0, 1, 1, 0, 1, 0])  # “good” data at 1–2 and 4
+    segs = readligo.dq_channel_to_seglist(channel, fs=1)
+    assert len(segs) == 2
+    assert segs[0].start == 1 and segs[0].stop == 3
+
+3. Test FileList class
+
+✅ Why: You can check that it correctly lists files and caches results.
+What to test:
+
+That it finds .gwf and .hdf5 files in subdirectories.
+
+That writing and reading from a cache preserves the file list.
+
+Example:
+
+def test_filelist_find_and_cache(tmp_path):
+    f1 = tmp_path / "test1.gwf"
+    f2 = tmp_path / "test2.hdf5"
+    f1.touch(); f2.touch()
+
+    fl = readligo.FileList(directory=tmp_path)
+    assert len(fl.list) == 2
+
+    cache = tmp_path / "cache.txt"
+    fl.writecache(cache)
+    fl2 = readligo.FileList(directory=tmp_path, cache=str(cache))
+    assert set(fl.list) == set(fl2.list)
+
+4. Test segment merging and trimming in getsegs()
+
+✅ Why: This part merges and trims overlapping segments — subtle logic errors often hide here.
+What to test:
+
+That overlapping segments get merged properly.
+
+That segments outside the requested GPS range are trimmed or discarded.
+
+You can do this by mocking or faking a small .hdf5 file or by directly constructing a SegmentList.
+
+5. Optional: Mock TimeSeries.read()
+
+✅ Why: For GWF file reading, you can simulate the behavior of gwpy without needing real data files.
+You can use unittest.mock to fake return values for TimeSeries.read().
+
+Example:
+
+from unittest.mock import patch, MagicMock
+
+@patch("ligotools.readligo.TimeSeries.read")
+def test_read_frame_with_mock(mock_read):
+    mock_ts = MagicMock()
+    mock_ts.value = np.array([1, 2, 3])
+    mock_ts.t0.value = 0
+    mock_ts.dt.value = 1
+    mock_ts.unit = "unit:DATA"
+    mock_read.return_value = mock_ts
+
+    strain, gpsStart, ts, qmask, short, injmask, injnames = readligo.read_frame(
+        "fakefile.gwf", "H1"
+    )
+    assert isinstance(strain, np.ndarray)
+
+⚙️ How to run your tests
+
+Once you’ve created a tests/ folder (like ligotools/tests/test_readligo.py):
+
+pytest -v
+
+
+Pytest will automatically discover and run any file starting with test_.
+
+Would you like me to write a ready-to-run test file (test_readligo.py) that covers these key functions with mock data and temporary files? It’ll be fully compatible with pytest.
+
+
+Input: Error recieved when I tried to run my test: collected 0 items / 1 error ======================================================== ERRORS ======================================================== __________________________________ ERROR collecting ligotools/tests/test_readligo.py ___________________________________ ImportError while importing test module '/home/jovyan/hw3-elange017/ligotools/tests/test_readligo.py'. Hint: make sure your test modules/packages have valid Python names. Traceback: /srv/conda/envs/notebook/lib/python3.12/importlib/__init__.py:90: in import_module return _bootstrap._gcd_import(name[level:], package, level) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ligotools/tests/test_readligo.py:5: in <module> from ligotools import readligo E ModuleNotFoundError: No module named 'ligotools' =============================================== short test summary info ================================================ ERROR ligotools/tests/test_readligo.py !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! =================================================== 1 error in 1.14s =================================================== (notebook) jovyan@jupyter-elange017:~/hw3-elange017$
+
+Output: run pytest from the root folder:
+
+cd ~/hw3-elange017
+pytest -v
+
+
+✅ Important: don’t cd into ligotools/tests before running pytest — it must start from the project root so Python recognizes ligotools as a package.
+
+🧩 Option 2: Add the package to your Python path (temporary fix)
+
+If you must run pytest from inside ligotools/tests, add this snippet at the top of your test file:
+
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+
+So your test_readligo.py should begin like:
+
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from ligotools import readligo
+import numpy as np
+
+
+Then run:
+
+pytest -v
+
+🧰 Option 3: Install the package locally (cleanest long-term)
+
+If your pyproject.toml is ready, just install your package in editable mode:
+
+pip install -e .
+
+
+This tells Python “this directory contains a package I’m developing,” so you can import it anywhere.
+
+Then run:
+
+pytest -v
+
+
+If you show me the contents of your pyproject.toml and the directory structure (run ls -R in your project folder), I can tell you exactly which of the above is best for your setup. Would you like to do that?
+
+Input: # -- To calculate the PSD of the data, choose an overlap and a window (common to all detectors)
+#   that minimizes "spectral leakage" https://en.wikipedia.org/wiki/Spectral_leakage
+NFFT = 4*fs
+psd_window = np.blackman(NFFT)
+# and a 50% overlap:
+NOVL = NFFT//2
+
+# define the complex template, common to both detectors:
+template = (template_p + template_c*1.j) 
+# We will record the time where the data match the END of the template.
+etime = time+template_offset
+# the length and sampling rate of the template MUST match that of the data.
+datafreq = np.fft.fftfreq(template.size)*fs
+df = np.abs(datafreq[1] - datafreq[0])
+
+# to remove effects at the beginning and end of the data stretch, window the data
+# https://en.wikipedia.org/wiki/Window_function#Tukey_window
+try:   dwindow = windows.tukey(template.size, alpha=1./8)  # Tukey window preferred, but requires recent scipy version 
+except: dwindow = windows.blackman(template.size)          # Blackman window OK if Tukey is not available
+
+# prepare the template fft.
+template_fft = np.fft.fft(template*dwindow) / fs
+
+# loop over the detectors
+dets = ['H1', 'L1']
+for det in dets:
+
+    if det == 'L1': data = strain_L1.copy()
+    else:           data = strain_H1.copy()
+
+    # -- Calculate the PSD of the data.  Also use an overlap, and window:
+    data_psd, freqs = mlab.psd(data, Fs = fs, NFFT = NFFT, window=psd_window, noverlap=NOVL)
+
+    # Take the Fourier Transform (FFT) of the data and the template (with dwindow)
+    data_fft = np.fft.fft(data*dwindow) / fs
+
+    # -- Interpolate to get the PSD values at the needed frequencies
+    power_vec = np.interp(np.abs(datafreq), freqs, data_psd)
+
+    # -- Calculate the matched filter output in the time domain:
+    # Multiply the Fourier Space template and data, and divide by the noise power in each frequency bin.
+    # Taking the Inverse Fourier Transform (IFFT) of the filter output puts it back in the time domain,
+    # so the result will be plotted as a function of time off-set between the template and the data:
+    optimal = data_fft * template_fft.conjugate() / power_vec
+    optimal_time = 2*np.fft.ifft(optimal)*fs
+
+    # -- Normalize the matched filter output:
+    # Normalize the matched filter output so that we expect a value of 1 at times of just noise.
+    # Then, the peak of the matched filter output will tell us the signal-to-noise ratio (SNR) of the signal.
+    sigmasq = 1*(template_fft * template_fft.conjugate() / power_vec).sum() * df
+    sigma = np.sqrt(np.abs(sigmasq))
+    SNR_complex = optimal_time/sigma
+
+    # shift the SNR vector by the template length so that the peak is at the END of the template
+    peaksample = int(data.size / 2)  # location of peak in the template
+    SNR_complex = np.roll(SNR_complex,peaksample)
+    SNR = abs(SNR_complex)
+
+    # find the time and SNR value at maximum:
+    indmax = np.argmax(SNR)
+    timemax = time[indmax]
+    SNRmax = SNR[indmax]
+
+    # Calculate the "effective distance" (see FINDCHIRP paper for definition)
+    # d_eff = (8. / SNRmax)*D_thresh
+    d_eff = sigma / SNRmax
+    # -- Calculate optimal horizon distnace
+    horizon = sigma/8
+
+    # Extract time offset and phase at peak
+    phase = np.angle(SNR_complex[indmax])
+    offset = (indmax-peaksample)
+
+    # apply time offset, phase, and d_eff to template 
+    template_phaseshifted = np.real(template*np.exp(1j*phase))    # phase shift the template
+    template_rolled = np.roll(template_phaseshifted,offset) / d_eff  # Apply time offset and scale amplitude
+    
+    # Whiten and band-pass the template for plotting
+    template_whitened = whiten(template_rolled,interp1d(freqs, data_psd),dt)  # whiten the template
+    template_match = filtfilt(bb, ab, template_whitened) / normalization # Band-pass the template
+    
+    print('For detector {0}, maximum at {1:.4f} with SNR = {2:.1f}, D_eff = {3:.2f}, horizon = {4:0.1f} Mpc' 
+          .format(det,timemax,SNRmax,d_eff,horizon))
+
+    if make_plots:
+
+        # plotting changes for the detectors:
+        if det == 'L1': 
+            pcolor='g'
+            strain_whitenbp = strain_L1_whitenbp
+            template_L1 = template_match.copy()
+        else:
+            pcolor='r'
+            strain_whitenbp = strain_H1_whitenbp
+            template_H1 = template_match.copy()
+
+        # -- Plot the result
+        plt.figure(figsize=(10,8))
+        plt.subplot(2,1,1)
+        plt.plot(time-timemax, SNR, pcolor,label=det+' SNR(t)')
+        #plt.ylim([0,25.])
+        plt.grid('on')
+        plt.ylabel('SNR')
+        plt.xlabel('Time since {0:.4f}'.format(timemax))
+        plt.legend(loc='upper left')
+        plt.title(det+' matched filter SNR around event')
+
+        # zoom in
+        plt.subplot(2,1,2)
+        plt.plot(time-timemax, SNR, pcolor,label=det+' SNR(t)')
+        plt.grid('on')
+        plt.ylabel('SNR')
+        plt.xlim([-0.15,0.05])
+        #plt.xlim([-0.3,+0.3])
+        plt.grid('on')
+        plt.xlabel('Time since {0:.4f}'.format(timemax))
+        plt.legend(loc='upper left')
+        plt.savefig('figures/' + eventname+"_"+det+"_SNR."+plottype)
+
+        plt.figure(figsize=(10,8))
+        plt.subplot(2,1,1)
+        plt.plot(time-tevent,strain_whitenbp,pcolor,label=det+' whitened h(t)')
+        plt.plot(time-tevent,template_match,'k',label='Template(t)')
+        plt.ylim([-10,10])
+        plt.xlim([-0.15,0.05])
+        plt.grid('on')
+        plt.xlabel('Time since {0:.4f}'.format(timemax))
+        plt.ylabel('whitened strain (units of noise stdev)')
+        plt.legend(loc='upper left')
+        plt.title(det+' whitened data around event')
+
+        plt.subplot(2,1,2)
+        plt.plot(time-tevent,strain_whitenbp-template_match,pcolor,label=det+' resid')
+        plt.ylim([-10,10])
+        plt.xlim([-0.15,0.05])
+        plt.grid('on')
+        plt.xlabel('Time since {0:.4f}'.format(timemax))
+        plt.ylabel('whitened strain (units of noise stdev)')
+        plt.legend(loc='upper left')
+        plt.title(det+' Residual whitened data after subtracting template around event')
+        plt.savefig('figures/' + eventname+"_"+det+"_matchtime."+plottype)
+                 
+        # -- Display PSD and template
+        # must multiply by sqrt(f) to plot template fft on top of ASD:
+        plt.figure(figsize=(10,6))
+        template_f = np.absolute(template_fft)*np.sqrt(np.abs(datafreq)) / d_eff
+        plt.loglog(datafreq, template_f, 'k', label='template(f)*sqrt(f)')
+        plt.loglog(freqs, np.sqrt(data_psd),pcolor, label=det+' ASD')
+        plt.xlim(20, fs/2)
+        plt.ylim(1e-24, 1e-20)
+        plt.grid()
+        plt.xlabel('frequency (Hz)')
+        plt.ylabel('strain noise ASD (strain/rtHz), template h(f)*rt(f)')
+        plt.legend(loc='upper left')
+        plt.title(det+' ASD and template around event')
+        plt.savefig('figures/' + eventname+"_"+det+"_matchfreq."+plottype)
+
+find the notebook cell that begins with
+
+# -- To calculate the PSD of the data, choose an overlap and a window (common to all detectors)
+#   that minimizes "spectral leakage" https://en.wikipedia.org/wiki/Spectral_leakage
+
+and move its plotting code into a separate utility function in your utils.py file. Call this function from the notebook in a similar way to the other utility functions.
+
+OUTPUT: 1️⃣ Identify the plotting part
+
+From your cell, the plotting starts around:
+
+if make_plots:
+
+    # plotting changes for the detectors:
+    ...
+    plt.savefig('figures/' + eventname+"_"+det+"_SNR."+plottype)
+    ...
+
+
+Everything inside the if make_plots: block is what we want to extract.
+
+2️⃣ Create a new function in ligotools/utils.py
+
+For example:
+
+import matplotlib.pyplot as plt
+
+def plot_matched_filter_results(time, timemax, tevent, eventname, det, SNR, 
+                                strain_whitenbp, template_match, template_fft,
+                                datafreq, data_psd, plottype='png'):
+    """
+    Plot matched filter results for a detector and save figures.
+    """
+
+    # -- Plot SNR vs time
+    plt.figure(figsize=(10,8))
+    plt.subplot(2,1,1)
+    plt.plot(time-timemax, SNR, 'r' if det=='H1' else 'g', label=f'{det} SNR(t)')
+    plt.grid('on')
+    plt.ylabel('SNR')
+    plt.xlabel(f'Time since {timemax:.4f}')
+    plt.legend(loc='upper left')
+    plt.title(f'{det} matched filter SNR around event')
+
+    plt.subplot(2,1,2)
+    plt.plot(time-timemax, SNR, 'r' if det=='H1' else 'g', label=f'{det} SNR(t)')
+    plt.grid('on')
+    plt.ylabel('SNR')
+    plt.xlim([-0.15,0.05])
+    plt.xlabel(f'Time since {timemax:.4f}')
+    plt.legend(loc='upper left')
+    plt.savefig(f'figures/{eventname}_{det}_SNR.{plottype}')
+
+    # -- Plot whitened strain and template
+    plt.figure(figsize=(10,8))
+    plt.subplot(2,1,1)
+    plt.plot(time-tevent, strain_whitenbp, 'r' if det=='H1' else 'g', label=f'{det} whitened h(t)')
+    plt.plot(time-tevent, template_match, 'k', label='Template(t)')
+    plt.ylim([-10,10])
+    plt.xlim([-0.15,0.05])
+    plt.grid('on')
+    plt.xlabel(f'Time since {timemax:.4f}')
+    plt.ylabel('Whitened strain (units of noise stdev)')
+    plt.legend(loc='upper left')
+    plt.title(f'{det} whitened data around event')
+
+    plt.subplot(2,1,2)
+    plt.plot(time-tevent, strain_whitenbp-template_match, 'r' if det=='H1' else 'g', label=f'{det} resid')
+    plt.ylim([-10,10])
+    plt.xlim([-0.15,0.05])
+    plt.grid('on')
+    plt.xlabel(f'Time since {timemax:.4f}')
+    plt.ylabel('Whitened strain (units of noise stdev)')
+    plt.legend(loc='upper left')
+    plt.title(f'{det} Residual whitened data after subtracting template around event')
+    plt.savefig(f'figures/{eventname}_{det}_matchtime.{plottype}')
+
+    # -- PSD and template plot
+    plt.figure(figsize=(10,6))
+    template_f = np.absolute(template_fft)*np.sqrt(np.abs(datafreq)) 
+    plt.loglog(datafreq, template_f, 'k', label='template(f)*sqrt(f)')
+    plt.loglog(datafreq, np.sqrt(data_psd), 'r' if det=='H1' else 'g', label=f'{det} ASD')
+    plt.xlim(20, datafreq.max())
+    plt.ylim(1e-24, 1e-20)
+    plt.grid()
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('strain noise ASD (strain/rtHz), template h(f)*rt(f)')
+    plt.legend(loc='upper left')
+    plt.title(f'{det} ASD and template around event')
+    plt.savefig(f'figures/{eventname}_{det}_matchfreq.{plottype}')
+
+3️⃣ Update the notebook
+
+Replace the plotting block with a call to your new function:
+
+if make_plots:
+    from ligotools.utils import plot_matched_filter_results
+
+    plot_matched_filter_results(time, timemax, tevent, eventname, det, SNR, 
+                                strain_whitenbp, template_match, template_fft,
+                                datafreq, data_psd, plottype)
+
+
+✅ Benefits:
+
+Notebook is cleaner.
+
+Plotting is reusable for multiple events or detectors.
+
+Easier to test plotting logic separately.
