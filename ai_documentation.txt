@@ -489,3 +489,47 @@ pytest ligotools/tests/test_utils.py
 
 You should see the tests pass if the functions are correctly implemented.
 
+INPUT: There should be a Makefile with the following targets. env: creates and configures the environment (but does not activate it). If you have already created an environment of the same name, have the command instead update the environment with a provided environment.yml file html: build the html rendering of your MyST site (i.e. what’s produced when you call myst build --html on the command line). Note this build can only be viewed locally. clean: clean up the figures, audio and _build folders.
+OUTPUT: The error `No rule to make target 'env'` means there’s **no Makefile** in your current directory—or it doesn’t contain the targets `env`, `html`, or `clean`.
+
+Here’s how to fix it:
+
+1. **Check that a file named `Makefile` exists** in the project root:
+
+```bash
+ls -l
+```
+
+You should see `Makefile` listed exactly like that (capital “M”, no extension).
+
+2. **If it doesn’t exist**, create one. Example contents for your project:
+
+```makefile
+# Makefile for MyST project
+
+# Create/update conda environment
+env:
+	conda env create -f environment.yml || conda env update -f environment.yml
+
+# Build HTML site
+html:
+	myst build --html
+
+# Clean build artifacts
+clean:
+	rm -rf _build figures audio/*.wav
+```
+
+3. **Run the targets**:
+
+```bash
+make env    # sets up environment
+make html   # builds HTML
+make clean  # cleans artifacts
+```
+
+4. **Important**: Make sure you’re in the same folder where `Makefile` is located when you run `make`.
+
+---
+
+If you want, I can write a **ready-to-use Makefile tailored to your `hw3-elange017` project** with proper paths for `_build`, `figures`, and `audio`. It will let you run `make env`, `make html`, and `make clean` without errors. Do you want me to do that?
