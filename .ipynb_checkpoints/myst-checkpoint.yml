@@ -1,0 +1,15 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: 63c1c564-3d2a-40b7-9cc6-5c97a2c6d388
+  # title:
+  # description:
+  # keywords: []
+  # authors: []
+  github: https://github.com/UCB-stat-159-f25/hw3-elange017
+  # To autogenerate a Table of Contents, run "myst init --write-toc"
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png
