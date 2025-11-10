@@ -1,0 +1,155 @@
+Input: I asked ChatGPT what tests to run based on the readligo.py contents and it gave me test functions:
+Output: 1. Test file handling logic
+
+✅ Why: A lot of the functions depend on correctly recognizing filenames and directories.
+What to test:
+
+That loaddata() correctly distinguishes between .gwf and .hdf5 files.
+
+That it returns None, None, None for zero-length files.
+
+That FileList properly finds .gwf or .hdf5 files in a temporary directory.
+
+Example (pytest-style):
+import os
+import numpy as np
+import pytest
+from ligotools import readligo
+
+def test_loaddata_zero_length(tmp_path):
+    f = tmp_path / "empty.hdf5"
+    f.touch()  # create empty file
+    result = readligo.loaddata(str(f))
+    assert result == (None, None, None)
+2. Test internal helper behavior
+
+✅ Why: These are easy to isolate and check without real LIGO data.
+What to test:
+
+dq_channel_to_seglist() correctly produces slices for a fake binary mask.
+
+dq2segs() returns proper segment start/stop pairs.
+
+Example:
+
+def test_dq_channel_to_seglist_basic():
+    channel = np.array([0, 1, 1, 0, 1, 0])  # “good” data at 1–2 and 4
+    segs = readligo.dq_channel_to_seglist(channel, fs=1)
+    assert len(segs) == 2
+    assert segs[0].start == 1 and segs[0].stop == 3
+
+3. Test FileList class
+
+✅ Why: You can check that it correctly lists files and caches results.
+What to test:
+
+That it finds .gwf and .hdf5 files in subdirectories.
+
+That writing and reading from a cache preserves the file list.
+
+Example:
+
+def test_filelist_find_and_cache(tmp_path):
+    f1 = tmp_path / "test1.gwf"
+    f2 = tmp_path / "test2.hdf5"
+    f1.touch(); f2.touch()
+
+    fl = readligo.FileList(directory=tmp_path)
+    assert len(fl.list) == 2
+
+    cache = tmp_path / "cache.txt"
+    fl.writecache(cache)
+    fl2 = readligo.FileList(directory=tmp_path, cache=str(cache))
+    assert set(fl.list) == set(fl2.list)
+
+4. Test segment merging and trimming in getsegs()
+
+✅ Why: This part merges and trims overlapping segments — subtle logic errors often hide here.
+What to test:
+
+That overlapping segments get merged properly.
+
+That segments outside the requested GPS range are trimmed or discarded.
+
+You can do this by mocking or faking a small .hdf5 file or by directly constructing a SegmentList.
+
+5. Optional: Mock TimeSeries.read()
+
+✅ Why: For GWF file reading, you can simulate the behavior of gwpy without needing real data files.
+You can use unittest.mock to fake return values for TimeSeries.read().
+
+Example:
+
+from unittest.mock import patch, MagicMock
+
+@patch("ligotools.readligo.TimeSeries.read")
+def test_read_frame_with_mock(mock_read):
+    mock_ts = MagicMock()
+    mock_ts.value = np.array([1, 2, 3])
+    mock_ts.t0.value = 0
+    mock_ts.dt.value = 1
+    mock_ts.unit = "unit:DATA"
+    mock_read.return_value = mock_ts
+
+    strain, gpsStart, ts, qmask, short, injmask, injnames = readligo.read_frame(
+        "fakefile.gwf", "H1"
+    )
+    assert isinstance(strain, np.ndarray)
+
+⚙️ How to run your tests
+
+Once you’ve created a tests/ folder (like ligotools/tests/test_readligo.py):
+
+pytest -v
+
+
+Pytest will automatically discover and run any file starting with test_.
+
+Would you like me to write a ready-to-run test file (test_readligo.py) that covers these key functions with mock data and temporary files? It’ll be fully compatible with pytest.
+
+
+Input: Error recieved when I tried to run my test: collected 0 items / 1 error ======================================================== ERRORS ======================================================== __________________________________ ERROR collecting ligotools/tests/test_readligo.py ___________________________________ ImportError while importing test module '/home/jovyan/hw3-elange017/ligotools/tests/test_readligo.py'. Hint: make sure your test modules/packages have valid Python names. Traceback: /srv/conda/envs/notebook/lib/python3.12/importlib/__init__.py:90: in import_module return _bootstrap._gcd_import(name[level:], package, level) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ligotools/tests/test_readligo.py:5: in <module> from ligotools import readligo E ModuleNotFoundError: No module named 'ligotools' =============================================== short test summary info ================================================ ERROR ligotools/tests/test_readligo.py !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! =================================================== 1 error in 1.14s =================================================== (notebook) jovyan@jupyter-elange017:~/hw3-elange017$
+
+Output: run pytest from the root folder:
+
+cd ~/hw3-elange017
+pytest -v
+
+
+✅ Important: don’t cd into ligotools/tests before running pytest — it must start from the project root so Python recognizes ligotools as a package.
+
+🧩 Option 2: Add the package to your Python path (temporary fix)
+
+If you must run pytest from inside ligotools/tests, add this snippet at the top of your test file:
+
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+
+So your test_readligo.py should begin like:
+
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from ligotools import readligo
+import numpy as np
+
+
+Then run:
+
+pytest -v
+
+🧰 Option 3: Install the package locally (cleanest long-term)
+
+If your pyproject.toml is ready, just install your package in editable mode:
+
+pip install -e .
+
+
+This tells Python “this directory contains a package I’m developing,” so you can import it anywhere.
+
+Then run:
+
+pytest -v
+
+
+If you show me the contents of your pyproject.toml and the directory structure (run ls -R in your project folder), I can tell you exactly which of the above is best for your setup. Would you like to do that?
