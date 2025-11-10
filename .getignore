@@ -1,5 +1,33 @@
-# MyST build outputs
-_build
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-ligotools.egg-info
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
 
+# Virtual environment folders
+.env/
+.venv/
+*.env
+
+# MyST/Sphinx build output
+_build/
+html/
+latex/
+doctrees/
+
+# Generated files
+figures/
+audio/
+
+# Logs and miscellaneous
+*.log
+*.out
+*.aux
+*.toc
+
+# OS/system files
+.DS_Store
+Thumbs.db
